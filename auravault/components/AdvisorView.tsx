@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Send, Trash2, PlusCircle, MessageSquare, Pencil } from "lucide-react";
+import { Send, Mic, MicOff, Trash2, PlusCircle, MessageSquare, Pencil } from "lucide-react";
 
 const formatMessage = (text: string) => {
   const parts = text.split(/(\*\*.*?\*\*)/g);
@@ -37,6 +37,62 @@ export function AdvisorView() {
   const [editTitle, setEditTitle] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = true;
+
+        recognitionRef.current.onresult = (event: any) => {
+          let currentTranscript = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            currentTranscript += event.results[i][0].transcript;
+          }
+          setInput(currentTranscript);
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error);
+          setIsRecording(false);
+        };
+
+        recognitionRef.current.onend = () => {
+          setIsRecording(false);
+        };
+      }
+    }
+  }, []);
+
+  const toggleRecording = () => {
+    if (!recognitionRef.current) {
+      alert("Your browser does not support voice recognition. Please use Google Chrome or Microsoft Edge.");
+      return;
+    }
+
+    if (isRecording) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn("Microphone was already stopping.");
+      }
+      setIsRecording(false);
+    } else {
+      setInput(""); 
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.warn("Microphone is already listening!");
+        setIsRecording(true); 
+      }
+    }
+  };
 
   const reloadFromStorage = () => {
     const savedChatsStr = localStorage.getItem("auraVault_aiChats");
@@ -153,6 +209,11 @@ export function AdvisorView() {
     e.preventDefault();
     if (!input.trim() || !activeChat || !isLoaded || !user?.id) return;
 
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+    }
+
     const userText = input;
     setInput("");
 
@@ -173,28 +234,35 @@ export function AdvisorView() {
     setIsLoading(true);
 
     try {
+      const userId = user?.id; 
+      const userCurrencyKey = `auraVault_${userId}_currency`;
+      const userCurrencyCode = localStorage.getItem(userCurrencyKey) || localStorage.getItem("auraVault_currency") || "usd";
+
       const response = await fetch("http://localhost:5000/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userText,
-          userId: user.id,
+          userId: userId,
+          currency_code: userCurrencyCode, 
           history: activeChat.messages.length > 1 ? activeChat.messages.slice(1) : []
         }),
       });
 
       const data = await response.json();
+      
       updatedChats = updatedChats.map(chat =>
         chat.id === activeChatId
-          ? { ...chat, messages: [...chat.messages, { role: "ai", content: data.reply || "Error." }] }
+          ? { ...chat, messages: [...chat.messages, { role: "ai", content: data.reply || "Error processing request." }] }
           : chat
       );
       saveAllChats(updatedChats, activeChatId);
 
     } catch (error) {
+      console.error("Connection Error:", error);
       updatedChats = updatedChats.map(chat =>
         chat.id === activeChatId
-          ? { ...chat, messages: [...chat.messages, { role: "ai", content: "System error: Could not connect to backend." }] }
+          ? { ...chat, messages: [...chat.messages, { role: "ai", content: "System error: Could not connect to the backend." }] }
           : chat
       );
       saveAllChats(updatedChats, activeChatId);
@@ -304,17 +372,37 @@ export function AdvisorView() {
 
         <div className="p-4 border-t border-sidebar-border bg-sidebar">
           <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto relative flex items-center">
+            
+            {/* 👇 Google Ripple UI applied here! */}
+            <div className="absolute left-3 flex items-center justify-center z-10 w-9 h-9">
+              {isRecording && (
+                <span className="absolute w-10 h-10 rounded-full bg-red-500/40 animate-ping"></span>
+              )}
+              <button
+                type="button"
+                onClick={toggleRecording}
+                className={`relative p-2 rounded-full transition-colors ${
+                  isRecording ? "text-red-500" : "text-muted-foreground hover:text-emerald-500"
+                }`}
+              >
+                {isRecording ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+              </button>
+            </div>
+
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask AuraVault AI anything..."
-              className="w-full bg-background border border-sidebar-border rounded-xl pl-5 pr-12 py-3.5 text-[15px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50 text-foreground shadow-sm transition-all"
+              placeholder={isRecording ? "Listening..." : "Ask AuraVault AI anything..."}
+              className={`w-full bg-background border border-sidebar-border rounded-xl pl-12 pr-12 py-3.5 text-[15px] focus:outline-none focus:ring-1 focus:ring-emerald-500/50 text-foreground shadow-sm transition-all ${
+                  isRecording ? "border-red-500/50 ring-1 ring-red-500/20" : ""
+                }`}
             />
+            
             <button
               type="submit"
               disabled={isLoading || !input.trim() || !isLoaded || !user?.id}
-              className="absolute right-2 p-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="absolute right-2 p-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors z-10"
             >
               <Send className="w-5 h-5" />
             </button>

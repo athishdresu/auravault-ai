@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { MessageCircle, X, Send, Mic, MicOff, Loader2, Trash2 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
-import { MessageCircle, X, Send, Bot, User, Trash2 } from "lucide-react";
 
+type Message = { role: string; content: string };
+
+const DEFAULT_MESSAGE = { role: "ai", content: "Hello! I am your AuraVault AI. Tell me what you want to work on." };
 const formatMessage = (text: string) => {
   const parts = text.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return (
-        <strong key={index} className="font-bold text-foreground">
+        <strong key={index} className="font-bold text-inherit">
           {part.slice(2, -2)}
         </strong>
       );
@@ -17,235 +20,271 @@ const formatMessage = (text: string) => {
     return part;
   });
 };
-
-const DEFAULT_MESSAGE = [{ role: "ai", content: "Hello! I am your AuraVault AI. Tell me what you want?" }];
-
 export function ChatWidget() {
-  const { user, isLoaded } = useUser();
+  const { user } = useUser();
   const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([DEFAULT_MESSAGE]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>(DEFAULT_MESSAGE);
-  const widgetSessionIdRef = useRef<string | null>(null);
-
+  const [sessionId, setSessionId] = useState<string>("");
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatWindowRef = useRef<HTMLDivElement>(null);
-  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null); 
 
-  const saveAndBroadcast = (newMessages: { role: string; content: string }[]) => {
-    setMessages(newMessages);
-    localStorage.setItem("auraVault_aiHistory", JSON.stringify(newMessages));
-
-    let currentId = widgetSessionIdRef.current;
-    if (!currentId) {
-      currentId = Date.now().toString();
-      widgetSessionIdRef.current = currentId;
-    }
-
-    const savedChatsStr = localStorage.getItem("auraVault_aiChats");
-    let chats = savedChatsStr ? JSON.parse(savedChatsStr) : [];
-
-    let title = "New Chat";
-    if (newMessages.length > 1) {
-      const firstUser = newMessages.find((m: any) => m.role === "user");
-      if (firstUser) title = firstUser.content.substring(0, 20) + (firstUser.content.length > 20 ? "..." : "");
-    }
-
-    const existingIndex = chats.findIndex((c: any) => c.id === currentId);
-    if (existingIndex >= 0) {
-      chats[existingIndex].messages = newMessages;
-      chats[existingIndex].title = title;
-      chats[existingIndex].updatedAt = Date.now();
-    } else {
-      chats.unshift({
-        id: currentId,
-        title: title,
-        messages: newMessages,
-        updatedAt: Date.now()
-      });
-    }
-
-    localStorage.setItem("auraVault_aiChats", JSON.stringify(chats));
-    window.dispatchEvent(new Event("aiHistoryUpdated"));
-  };
-
-  const closeWidget = () => {
+  const handleClose = () => {
     setIsOpen(false);
-    setTimeout(() => {
-      setMessages(DEFAULT_MESSAGE);
-      widgetSessionIdRef.current = null;
-    }, 300);
+    setMessages([DEFAULT_MESSAGE]); 
+    setSessionId(""); 
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+    }
   };
 
-  const handleClearChat = () => {
-    setMessages(DEFAULT_MESSAGE);
-    widgetSessionIdRef.current = null;
+  const handleOpen = () => {
+    if (!sessionId) setSessionId(Date.now().toString());
+    setIsOpen(true);
   };
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isOpen]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (isOpen) {
-        if (
-          chatWindowRef.current &&
-          !chatWindowRef.current.contains(target) &&
-          toggleButtonRef.current &&
-          !toggleButtonRef.current.contains(target)
-        ) {
-          closeWidget();
-        }
+      if (chatRef.current && !chatRef.current.contains(event.target as Node)) {
+        handleClose();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !isLoaded || !user?.id) return;
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, isRecording]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false; 
+        recognitionRef.current.interimResults = true;
+
+        recognitionRef.current.onresult = (event: any) => {
+          let currentTranscript = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            currentTranscript += event.results[i][0].transcript;
+          }
+          setInput(currentTranscript);
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+          setIsRecording(false);
+        };
+
+        recognitionRef.current.onend = () => {
+          setIsRecording(false);
+        };
+      }
+    }
+  }, []);
+
+  const toggleRecording = () => {
+    if (!recognitionRef.current) {
+      alert("Your browser does not support voice recognition. Please use supported browser.");
+      return;
+    }
+
+    if (isRecording) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn("Microphone was already stopping.");
+      }
+      setIsRecording(false);
+    } else {
+      setInput(""); 
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.warn("Microphone is already listening!");
+        setIsRecording(true); 
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isOpen]);
+
+  const syncToAdvisor = (updatedMessages: Message[], userText: string) => {
+    const savedChats = JSON.parse(localStorage.getItem("auraVault_aiChats") || "[]");
+    const existingIndex = savedChats.findIndex((c: any) => c.id === sessionId);
+
+    let chatTitle = userText.slice(0, 20) + "...";
+    if (existingIndex >= 0) {
+       chatTitle = savedChats[existingIndex].title !== "New Chat" ? savedChats[existingIndex].title : chatTitle;
+    }
+
+    const chatToSave = {
+      id: sessionId,
+      title: chatTitle,
+      messages: updatedMessages,
+      updatedAt: Date.now()
+    };
+
+    if (existingIndex >= 0) {
+      savedChats[existingIndex] = chatToSave;
+    } else {
+      savedChats.unshift(chatToSave);
+    }
+
+    localStorage.setItem("auraVault_aiChats", JSON.stringify(savedChats));
+    window.dispatchEvent(new Event("aiHistoryUpdated"));
+  };
+
+  const handleSend = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() || !user?.id) return;
+
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+    }
 
     const userText = input;
     setInput("");
-
-    const userUpdatedMessages = [...messages, { role: "user", content: userText }];
-    saveAndBroadcast(userUpdatedMessages);
+    
+    const messagesWithUser = [...messages, { role: "user", content: userText }];
+    setMessages(messagesWithUser);
+    syncToAdvisor(messagesWithUser, userText);
     setIsLoading(true);
 
     try {
+      const userId = user?.id; 
+      const userCurrencyKey = `auraVault_${userId}_currency`;
+      const userCurrencyCode = localStorage.getItem(userCurrencyKey) || localStorage.getItem("auraVault_currency") || "usd";
       const response = await fetch("http://localhost:5000/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userText,
-          userId: user.id,
-          history: messages.length > 1 ? messages.slice(1) : []
+          userId: userId,
+          currency_code: userCurrencyCode, // 👈 INJECTED THE RAW CODE
+          history: messages.length > 1 ? messages.slice(1) : [] // 👈 Using the widget's correct 'messages' array!
         }),
       });
 
       const data = await response.json();
-
-      saveAndBroadcast([
-        ...userUpdatedMessages,
-        { role: "ai", content: data.reply || "I didn't quite catch that." },
-      ]);
+      const messagesWithAI = [...messagesWithUser, { role: "ai", content: data.reply || "Error." }];
+      setMessages(messagesWithAI);
+      syncToAdvisor(messagesWithAI, userText);
+      
+      window.dispatchEvent(new Event("searchTransactions"));
     } catch (error) {
-      saveAndBroadcast([
-        ...userUpdatedMessages,
-        { role: "ai", content: "System error: Could not connect to AuraVault servers." },
-      ]);
+      console.error("Connection Error:", error);
+      setMessages((prev) => [...prev, { role: "ai", content: "System error: Could not connect to backend." }]);
     } finally {
       setIsLoading(false);
     }
-  };
-
+   };
   return (
     <>
-      <div className="fixed bottom-6 right-6 z-50">
-        {!isOpen && (
-          <span className="absolute inset-0 w-full h-full rounded-full bg-emerald-500 opacity-40 animate-ping shadow-lg"></span>
-        )}
+      <div className={`fixed bottom-6 right-6 z-40 ${isOpen ? "hidden" : "flex"} items-center justify-center w-14 h-14`}>
+        <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60 animate-ping pointer-events-none"></span>
         <button
-          ref={toggleButtonRef}
-          onClick={() => isOpen ? closeWidget() : setIsOpen(true)}
-          className="relative p-4 rounded-full bg-emerald-500 hover:bg-emerald-600 text-black shadow-lg shadow-emerald-500/30 transition-all duration-300 flex items-center justify-center z-10"
+          onClick={handleOpen}
+          className="relative w-full h-full bg-emerald-500 hover:bg-emerald-600 text-black rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105 z-10"
         >
-          {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
+          <MessageCircle className="w-6 h-6" />
         </button>
       </div>
 
       {isOpen && (
-        <div
-          ref={chatWindowRef}
-          className="fixed bottom-24 right-6 w-80 md:w-96 h-[500px] bg-sidebar border border-sidebar-border rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5"
+        <div 
+          ref={chatRef} 
+          className="fixed bottom-6 right-6 w-[380px] max-w-[calc(100vw-3rem)] h-[500px] bg-sidebar border border-sidebar-border rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-200"
         >
-          <div className="p-4 bg-sidebar-accent border-b border-sidebar-border flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg">
-                <Bot className="w-5 h-5" />
+          <div className="p-4 border-b border-sidebar-border flex items-center justify-between bg-sidebar-accent/30">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <MessageCircle className="w-4 h-4 text-emerald-500" />
               </div>
               <div>
-                <h3 className="font-bold text-foreground">AuraVault AI</h3>
-                <p className="text-xs text-emerald-500">Online & Secure</p>
+                <h3 className="font-semibold text-sm text-foreground">AuraVault AI</h3>
+                <p className="text-xs text-emerald-500 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Online & Listening
+                </p>
               </div>
             </div>
-
-            <button
-              onClick={handleClearChat}
-              className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-lg hover:bg-sidebar-border"
-              title="Clear Chat"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button onClick={handleClose} className="text-muted-foreground hover:text-foreground p-1.5 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background">
             {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {msg.role === "ai" && (
-                  <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0 border border-sidebar-border">
-                    <Bot className="w-4 h-4 text-emerald-500" />
-                  </div>
-                )}
-
-                <div
-                  className={`px-4 py-2 rounded-2xl max-w-[75%] text-sm whitespace-pre-wrap ${
-                    msg.role === "user"
-                      ? "bg-emerald-500 text-black rounded-br-sm"
-                      : "bg-muted text-foreground rounded-bl-sm border border-sidebar-border"
-                  }`}
-                >
+              <div key={index} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`px-4 py-2.5 rounded-2xl text-[14px] leading-relaxed max-w-[85%] ${
+                  msg.role === "user" ? "bg-emerald-500 text-black rounded-br-sm" : "bg-sidebar border border-sidebar-border text-foreground rounded-bl-sm"
+                }`}>
                   {msg.role === "ai" ? formatMessage(msg.content) : msg.content}
                 </div>
-
-                {msg.role === "user" && (
-                  <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0 border border-sidebar-border">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                )}
               </div>
             ))}
-
             {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0 border border-sidebar-border">
-                  <Bot className="w-4 h-4 text-emerald-500 animate-pulse" />
-                </div>
-                <div className="px-4 py-2 rounded-2xl bg-muted text-muted-foreground rounded-bl-sm border border-sidebar-border flex gap-1 items-center h-[36px]">
-                  <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
-                  <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
-                  <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+              <div className="flex justify-start">
+                <div className="px-4 py-2.5 rounded-2xl bg-sidebar border border-sidebar-border rounded-bl-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs">Analyzing...</span>
                 </div>
               </div>
             )}
-
             <div ref={messagesEndRef} />
           </div>
 
-          <form onSubmit={handleSendMessage} className="p-3 border-t border-sidebar-border bg-sidebar-accent/50">
-            <div className="flex gap-2">
+          <div className="p-3 border-t border-sidebar-border bg-sidebar relative z-50">
+            <form onSubmit={handleSend} className="flex items-center gap-2 relative">
+              <div className="absolute left-2 flex items-center justify-center w-8 h-8">
+                {isRecording && (
+                  <span className="absolute w-8 h-8 rounded-full bg-red-500 opacity-60 animate-ping pointer-events-none"></span>
+                )}
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  className={`relative z-10 p-1.5 rounded-full transition-colors ${
+                    isRecording ? "text-red-500" : "text-muted-foreground hover:text-emerald-500"
+                  }`}
+                >
+                  {isRecording ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                </button>
+              </div>
+
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 bg-background border border-sidebar-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 text-foreground"
+                placeholder={isRecording ? "Listening..." : "Type or speak your message..."}
+                className={`flex-1 bg-background border border-sidebar-border rounded-xl pl-10 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all ${
+                  isRecording ? "border-red-500/50 ring-1 ring-red-500/20" : ""
+                }`}
               />
+
               <button
                 type="submit"
-                disabled={isLoading || !input.trim() || !isLoaded || !user?.id}
-                className="p-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                disabled={isLoading || !input.trim()}
+                className="absolute right-2 p-1.5 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors z-10"
               >
                 <Send className="w-4 h-4" />
               </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       )}
     </>

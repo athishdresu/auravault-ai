@@ -60,7 +60,23 @@ def handle_transactions():
             return jsonify({"message": "Transaction added successfully!", "transaction": transaction_item}), 201
         except Exception as e:
             return jsonify({"error": "Failed to save to AWS"}), 500
-
+        
+@app.route('/api/transactions/all', methods=['DELETE'])
+def delete_all_transactions():
+    user_id = request.args.get('userId')
+    if not user_id:
+        return jsonify({"error": "No user ID provided"}), 400
+        
+    try:
+        response = transactions_table.scan(FilterExpression=Attr('userId').eq(user_id))
+        items = response.get('Items', [])
+        with transactions_table.batch_writer() as batch:
+            for item in items:
+                batch.delete_item(Key={'id': item['id']})               
+        return jsonify({"message": "Vault cleared successfully!"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/api/transactions/<transaction_id>', methods=['DELETE'])
 def delete_transaction(transaction_id):
     try:
@@ -110,10 +126,23 @@ def chat():
             transactions = response.get('Items', [])
         else:
             transactions = []
+        raw_currency = str(data.get('currency_code', data.get('currency', 'inr'))).lower()
         
+        symbol_map = {
+            "usd": "$",
+            "eur": "€",
+            "inr": "₹",
+            "gbp": "£",
+            "$": "$",
+            "€": "€",
+            "₹": "₹",
+            "£": "£"
+        }
+        currency_symbol = symbol_map.get(raw_currency, raw_currency)
         total_balance = 0
         total_expenses = 0
         recent_txs = []
+        category_spending = {}
         
         for tx in transactions:
             amt = float(tx.get('amount', 0))
@@ -124,30 +153,33 @@ def chat():
             elif cat not in ['savings', 'investment', 'savings_external', 'savings_internal']:
                 total_expenses += abs(amt)
                 total_balance -= abs(amt)
-                
+                category_spending[cat] = category_spending.get(cat, 0) + abs(amt)
+        category_str = ", ".join([f"{k.capitalize()}: {currency_symbol}{v}" for k, v in category_spending.items()]) if category_spending else "No categorized expenses."
+
         sorted_txs = sorted(transactions, key=lambda x: str(x.get('date', '')), reverse=True)[:5]
         for tx in sorted_txs:
-            recent_txs.append(f"{tx.get('name')} (Rs {tx.get('amount')})")
+            recent_txs.append(f"{tx.get('name')} ({currency_symbol}{tx.get('amount')})")
             
         recent_tx_str = ", ".join(recent_txs) if recent_txs else "No recent transactions"
         current_datetime = datetime.now().strftime('%B %d, %Y at %I:%M %p')
+        
         system_context = f"""
         You are AuraVault AI, an elite wealth architect and behavioral finance expert. 
         You possess the analytical rigor of a top-tier hedge fund manager. You do not just track money; you engineer financial freedom. Your tone is direct, highly confident, strictly concise, and professional.
 
-       LIVE TELEMETRY DATA:
+        LIVE TELEMETRY DATA:
         - Current Date & Time: {current_datetime}
-        - Liquidity (Balance): ₹{total_balance}
-        - Burn Rate (Expenses): ₹{total_expenses}
+        - Liquidity (Balance): {currency_symbol}{total_balance}
+        - Burn Rate (Total Expenses): {currency_symbol}{total_expenses}
+        - Categorized Spending: {category_str} 
         - Cash Flow Velocity (Recent): {recent_tx_str}
 
         COGNITIVE FRAMEWORK & OPERATING RULES:
         1. THE ICEBREAKER PROTOCOL: If the user simply greets you (e.g., "hi", "hello"), reply with ONE short sentence acknowledging their Liquidity, and ask what they want to work on.
-        2. THE GENERAL INQUIRY PROTOCOL (STRICT OVERRIDE): If the user asks a simple, factual, or non-financial question (like asking for the date, weather, or basic trivia), answer it directly and concisely. DO NOT force a financial analysis. DO NOT mention their balance or expenses.
-        3. THE "SO WHAT?" PROTOCOL: Only for financial questions or discussions, analyze the math. If Burn Rate is too close to Liquidity, issue a firm warning. If Liquidity is high, advise deploying capital.
-        4. BEHAVIORAL PROFILING: Look at recent transactions for spending trends when giving financial advice. 
-        5. ZERO-WASTE COMMUNICATION: Maximum 3 short paragraphs. Be impactful and direct. NO generic AI intros.
-        6. BOLD THE BAG: Financial figures must always be bolded with the Rupee symbol (e.g., **₹27,770**). 
+        2. THE GENERAL INQUIRY PROTOCOL (STRICT OVERRIDE): If the user asks a simple, factual, or non-financial question, answer it directly and concisely. DO NOT force a financial analysis.
+        3. THE AUDITOR PROTOCOL: If the user asks about specific spending, look specifically at the 'Categorized Spending' data and give them the exact numbers.
+        4. ZERO-WASTE COMMUNICATION: Maximum 3 short paragraphs. NO generic AI intros.
+        5. BOLD THE BAG: Financial figures must always be bolded with the correct currency symbol (e.g., **{currency_symbol}27,770**). 
         """
         
         model = genai.GenerativeModel('gemini-3.5-flash', system_instruction=system_context)

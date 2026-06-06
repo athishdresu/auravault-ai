@@ -1,22 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useUser } from "@clerk/nextjs"; // 1. Added Clerk import
-import { Upload, Loader2 } from "lucide-react";
+import { useUser } from "@clerk/nextjs"; 
+import { Upload, Loader2, Trash2 } from "lucide-react";
 
 export function TransactionsView() {
-  const { user, isLoaded } = useUser(); // 2. Grab the user data
+  const { user, isLoaded } = useUser(); 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    // 3. Wait until Clerk has loaded the user before fetching!
+  const fetchTransactions = () => {
     if (!isLoaded || !user?.id) return;
 
-    // 4. Pass the userId to the backend!
     fetch(`http://localhost:5000/api/transactions?userId=${user.id}`)
       .then((res) => res.json())
       .then((data) => {
@@ -37,7 +35,10 @@ export function TransactionsView() {
         console.error("Failed to fetch from backend:", error);
         setLoading(false);
       });
-  // 5. Add user?.id to the dependency array so it refetches if the user changes
+  };
+
+  useEffect(() => {
+    fetchTransactions();
   }, [isLoaded, user?.id]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +51,7 @@ export function TransactionsView() {
     formData.append("file", file);
 
     try {
-      /* 🚀 NEXT STEP FOR HACKATHON:
+      /*
         We will uncomment this and build the /api/upload route in Python
         to run OCR / Gemini vision on the document!
         
@@ -72,12 +73,56 @@ export function TransactionsView() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this transaction?")) return;
+
+    try {
+      await fetch(`http://localhost:5000/api/transactions/${id}`, {
+        method: "DELETE",
+      });
+      setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+      window.dispatchEvent(new Event("searchTransactions"));
+      window.dispatchEvent(new Event("notificationsUpdated"));
+    } catch (error) {
+      console.error("Failed to delete transaction:", error);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!user?.id) return;
+    
+    if (!confirm("WARNING: Are you sure you want to permanently delete ALL transactions? This cannot be undone!")) return;
+
+    try {
+      await fetch(`http://localhost:5000/api/transactions/all?userId=${user.id}`, {
+        method: "DELETE",
+      });
+      
+      setTransactions([]); // Clear the UI
+      
+      window.dispatchEvent(new Event("searchTransactions"));
+      window.dispatchEvent(new Event("notificationsUpdated"));
+    } catch (error) {
+      console.error("Failed to clear vault:", error);
+    }
+  };
+
   return (
     <div className="w-full space-y-4 mt-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-foreground">All Transactions</h2>
         
-        <div>
+        <div className="flex items-center gap-3">
+          {transactions.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Delete All</span>
+            </button>
+          )}
+
           <input
             type="file"
             ref={fileInputRef}
@@ -114,7 +159,7 @@ export function TransactionsView() {
             transactions.map((tx: any) => (
               <div 
                 key={tx.id} 
-                className="flex items-center justify-between p-5 border-b border-sidebar-border hover:bg-sidebar-accent/50 transition-colors last:border-0"
+                className="flex items-center justify-between p-5 border-b border-sidebar-border hover:bg-sidebar-accent/50 transition-colors last:border-0 group"
               >
                 <div>
                   <p className="font-bold text-foreground text-lg">{tx.name}</p>
@@ -123,14 +168,24 @@ export function TransactionsView() {
                   </p>
                 </div>
                 
-                <span className={`text-lg font-bold ${
-                    (tx.category || "").toLowerCase() === 'salary' || (tx.category || "").toLowerCase() === 'income' 
-                    ? "text-emerald-500" 
-                    : "text-foreground"
-                }`}>
-                  {(tx.category || "").toLowerCase() === 'salary' || (tx.category || "").toLowerCase() === 'income' ? '+' : ''}
-                  ₹{parseFloat(tx.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                </span>
+                <div className="flex items-center gap-4">
+                  <span className={`text-lg font-bold ${
+                      (tx.category || "").toLowerCase() === 'salary' || (tx.category || "").toLowerCase() === 'income' 
+                      ? "text-emerald-500" 
+                      : "text-foreground"
+                  }`}>
+                    {(tx.category || "").toLowerCase() === 'salary' || (tx.category || "").toLowerCase() === 'income' ? '+' : ''}
+                    ₹{parseFloat(tx.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+
+                  <button
+                    onClick={() => handleDelete(tx.id)}
+                    className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md opacity-0 group-hover:opacity-100 transition-all focus:opacity-100"
+                    title="Delete transaction"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))
           )}

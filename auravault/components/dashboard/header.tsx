@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-export function Header() {
+export function Header({ currentTab = "Dashboard" }: { currentTab?: string }) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const { user } = useUser();
@@ -150,42 +150,45 @@ export function Header() {
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6 z-50 relative">
       
       <div className="flex items-center gap-4 flex-1">
-        <div className="relative max-w-md flex-1" ref={searchRef}>
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={searchTerm}
-            onChange={handleSearch}
-            onFocus={() => { if(searchTerm) setShowSearchDropdown(true); }}
-            placeholder="Search transactions, accounts..."
-            className="pl-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-emerald-500 transition-all"
-          />
-          
-          {showSearchDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-lg shadow-xl overflow-hidden z-50">
-              {searchResults.length > 0 ? (
-                searchResults.map(tx => (
-                  <div
-                    key={tx.id}
-                    onClick={() => handleSuggestionClick(tx.name)}
-                    className="px-4 py-3 hover:bg-muted/50 cursor-pointer flex justify-between items-center transition-colors border-b border-border last:border-b-0"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                      <p className="text-xs text-muted-foreground">{tx.category}</p>
+        {currentTab === "dashboard" && (
+          <div className="relative max-w-md flex-1" ref={searchRef}>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={searchTerm}
+              onChange={handleSearch}
+              onFocus={() => { if(searchTerm) setShowSearchDropdown(true); }}
+              placeholder="Search transactions, accounts..."
+              className="pl-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-emerald-500 transition-all"
+            />
+            
+            {showSearchDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-lg shadow-xl overflow-hidden z-50">
+                {searchResults.length > 0 ? (
+                  searchResults.map(tx => (
+                    <div
+                      key={tx.id}
+                      onClick={() => handleSuggestionClick(tx.name)}
+                      className="px-4 py-3 hover:bg-muted/50 cursor-pointer flex justify-between items-center transition-colors border-b border-border last:border-b-0"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{tx.name}</p>
+                        <p className="text-xs text-muted-foreground">{tx.category}</p>
+                      </div>
+                      <span className={`text-sm font-semibold ${(tx.category || "").toLowerCase() === 'salary' ? 'text-emerald-500' : 'text-foreground'}`}>
+                        ₹{parseFloat(tx.amount || 0).toLocaleString('en-IN')}
+                      </span>
                     </div>
-                    <span className={`text-sm font-semibold ${(tx.category || "").toLowerCase() === 'salary' ? 'text-emerald-500' : 'text-foreground'}`}>
-                      ₹{parseFloat(tx.amount || 0).toLocaleString('en-IN')}
-                    </span>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+                    No matches found in your vault.
                   </div>
-                ))
-              ) : (
-                <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                  No matches found in your vault.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        
       </div>
 
       <div className="flex items-center gap-4">
