@@ -2,7 +2,7 @@
 
 AuraVault AI is a modern, full-stack wealth management platform. It combines a beautiful, responsive Next.js dashboard with a powerful Python backend to track spending, analyze financial health, and automate transaction entry using Google's Gemini Vision AI.
 
- Live Demo: https://auravault-ai.vercel.app/
+ **Live Demo:** https://auravault-ai.vercel.app/
 
 ## Key Features
 * **Automated Data Entry:** Upload receipts or statements and let Gemini 1.5 Flash Vision automatically extract and categorize transactions.
