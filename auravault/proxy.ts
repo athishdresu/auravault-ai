@@ -1,14 +1,13 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Define which routes require the user to be logged in
 const isProtectedRoute = createRouteMatcher([
-  '/',           // Protect the main dashboard
-  '/api(.*)'     // Protect all local API routes
+  '/',     
+  '/api(.*)'
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
-    await auth.protect(); // Kick them out to the login screen if they aren't authenticated
+    await auth.protect();
   }
 });
 
