@@ -9,7 +9,7 @@ export function TransactionsList({ transactions = [], onRefresh }: { transaction
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
-      await fetch(`http://localhost:5000/api/transactions/${id}`, {
+      await fetch(`https://auravault-ai.onrender.com/api/transactions/${id}`, {
         method: "DELETE",
       });
       

@@ -238,7 +238,7 @@ export function AdvisorView() {
       const userCurrencyKey = `auraVault_${userId}_currency`;
       const userCurrencyCode = localStorage.getItem(userCurrencyKey) || localStorage.getItem("auraVault_currency") || "usd";
 
-      const response = await fetch("http://localhost:5000/api/chat", {
+      const response = await fetch("https://auravault-ai.onrender.com/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

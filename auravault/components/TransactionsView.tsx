@@ -15,7 +15,7 @@ export function TransactionsView() {
   const fetchTransactions = () => {
     if (!isLoaded || !user?.id) return;
 
-    fetch(`http://localhost:5000/api/transactions?userId=${user.id}`)
+    fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${user.id}`)
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data)) {
@@ -43,48 +43,33 @@ export function TransactionsView() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || !user?.id) return;
 
     setIsUploading(true);
-    
     const formData = new FormData();
     formData.append("file", file);
-
+    formData.append("userId", user.id);
     try {
-      /*
-        We will uncomment this and build the /api/upload route in Python
-        to run OCR / Gemini vision on the document!
-        
-        const response = await fetch("http://localhost:5000/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const result = await response.json();
-      */
+      const response = await fetch("https://auravault-ai.onrender.com/api/upload", {
+        method: "POST",
+        body: formData,
+      });
       
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log("File ready for AI extraction:", file.name);
+      if (!response.ok) throw new Error("Upload failed");
+      
+      const result = await response.json();
+      fetchTransactions();
+      window.dispatchEvent(new Event("searchTransactions"));
+      window.dispatchEvent(new Event("notificationsUpdated"));
+      
+      alert(`Success! AuraVault AI extracted ${result.count} transactions.`);
       
     } catch (error) {
       console.error("Upload failed", error);
+      alert("Failed to process statement. Please try again.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = ""; 
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this transaction?")) return;
-
-    try {
-      await fetch(`http://localhost:5000/api/transactions/${id}`, {
-        method: "DELETE",
-      });
-      setTransactions((prev) => prev.filter((tx) => tx.id !== id));
-      window.dispatchEvent(new Event("searchTransactions"));
-      window.dispatchEvent(new Event("notificationsUpdated"));
-    } catch (error) {
-      console.error("Failed to delete transaction:", error);
     }
   };
 
@@ -94,7 +79,7 @@ export function TransactionsView() {
     if (!confirm("WARNING: Are you sure you want to permanently delete ALL transactions? This cannot be undone!")) return;
 
     try {
-      await fetch(`http://localhost:5000/api/transactions/all?userId=${user.id}`, {
+      await fetch(`https://auravault-ai.onrender.com/api/transactions/all?userId=${user.id}`, {
         method: "DELETE",
       });
       

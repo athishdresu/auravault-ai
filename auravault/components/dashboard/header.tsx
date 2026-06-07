@@ -23,7 +23,7 @@ export function Header({ currentTab = "Dashboard" }: { currentTab?: string }) {
     if (!user?.id) return; 
 
     try {
-      const res = await fetch(`http://localhost:5000/api/transactions?userId=${user.id}`);
+      const res = await fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${user.id}`);
       const txData = await res.json();
 
       setAllTransactions(txData);

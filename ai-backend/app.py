@@ -3,6 +3,9 @@ from flask_cors import CORS
 import google.generativeai as genai
 import boto3
 import uuid
+import tempfile
+import json
+import os
 from datetime import datetime
 from boto3.dynamodb.conditions import Attr
 
@@ -199,6 +202,59 @@ def chat():
         
     except Exception as e:
         return jsonify({"reply": f"API Error: {str(e)}"}), 500
+@app.route('/api/upload', methods=['POST'])
+def upload_statement():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+        
+    file = request.files['file']
+    user_id = request.form.get('userId')
+    
+    if not user_id or file.filename == '':
+        return jsonify({"error": "Missing user ID or file"}), 400
 
+    try:
+        temp_dir = tempfile.gettempdir()
+        filepath = os.path.join(temp_dir, file.filename)
+        file.save(filepath)
+        gemini_file = genai.upload_file(path=filepath)
+        model = genai.GenerativeModel('gemini-3.5-flash')
+        prompt = """
+        Analyze this financial document (bank statement, receipt, or invoice). 
+        Extract all transactions.
+        Return exactly a raw JSON array of objects. Do not wrap it in ```json blocks. Just raw JSON.
+        Keys required for each object:
+        - "name": Merchant or description
+        - "amount": Absolute numeric value as a string (e.g., "45.50")
+        - "category": Choose the best fit: Salary, Housing, Education, Food, Travel, Entertainment, Shopping, Utilities, Health, Savings, Other.
+        - "date": Format exactly like "Jun 06, 2026". If no year is visible, assume the current year.
+        """
+        response = model.generate_content([gemini_file, prompt])
+        response_text = response.text.replace('```json', '').replace('```', '').strip()
+        extracted_txs = json.loads(response_text)
+        added_txs = []
+        with transactions_table.batch_writer() as batch:
+            for tx in extracted_txs:
+                new_id = str(uuid.uuid4())
+                item = {
+                    'id': new_id,
+                    'userId': user_id,
+                    'name': str(tx.get('name', 'Unknown')),
+                    'amount': str(tx.get('amount', '0')),
+                    'category': str(tx.get('category', 'Other')),
+                    'date': str(tx.get('date', datetime.now().strftime('%b %d, %Y')))
+                }
+                batch.put_item(Item=item)
+                added_txs.append(item)
+        
+        # 6. Clean up: Delete file from Gemini servers and your local temp folder
+        genai.delete_file(gemini_file.name)
+        os.remove(filepath)
+        
+        return jsonify({"message": "Successfully processed with AI", "count": len(added_txs)}), 200
+
+    except Exception as e:
+        print("AI Upload Error:", str(e))
+        return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

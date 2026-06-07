@@ -25,7 +25,7 @@ export function DashboardView() {
   const fetchData = () => {
     if (!user?.id) return; 
 
-    fetch(`http://localhost:5000/api/transactions?userId=${user.id}`)
+    fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${user.id}`)
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data)) {
@@ -83,7 +83,7 @@ export function DashboardView() {
         finalCategory = savingsSource === "balance" ? "Savings_Internal" : "Savings_External";
       }
 
-      await fetch("http://localhost:5000/api/transactions", {
+      await fetch("https://auravault-ai.onrender.com/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
