@@ -35,7 +35,7 @@ cd auravault-ai
 ### 2. Install Dependencies
 \`\`\`bash
 npm install
-# or
+or
 pnpm install
 \`\`\`
 
