@@ -8,8 +8,9 @@ import json
 import os
 from datetime import datetime
 from boto3.dynamodb.conditions import Attr
+import re
+import pdfplumber
 
-import os
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -212,43 +213,61 @@ def upload_statement():
         temp_dir = tempfile.gettempdir()
         filepath = os.path.join(temp_dir, file.filename)
         file.save(filepath)
-        gemini_file = genai.upload_file(path=filepath)
-        model = genai.GenerativeModel('gemini-3.5-flash')
-        prompt = """
-        Analyze this financial document (bank statement, receipt, or invoice). 
-        Extract all transactions.
-        Return exactly a raw JSON array of objects. Do not wrap it in ```json blocks. Just raw JSON.
-        Keys required for each object:
-        - "name": Merchant or description
-        - "amount": Absolute numeric value as a string (e.g., "45.50")
-        - "category": Choose the best fit: Salary, Housing, Education, Food, Travel, Entertainment, Shopping, Utilities, Health, Savings, Other.
-        - "date": Format exactly like "Jun 06, 2026". If no year is visible, assume the current year.
-        """
-        response = model.generate_content([gemini_file, prompt])
-        response_text = response.text.replace('```json', '').replace('```', '').strip()
-        extracted_txs = json.loads(response_text)
-        added_txs = []
-        with transactions_table.batch_writer() as batch:
-            for tx in extracted_txs:
-                new_id = str(uuid.uuid4())
-                item = {
-                    'id': new_id,
-                    'userId': user_id,
-                    'name': str(tx.get('name', 'Unknown')),
-                    'amount': str(tx.get('amount', '0')),
-                    'category': str(tx.get('category', 'Other')),
-                    'date': str(tx.get('date', datetime.now().strftime('%b %d, %Y')))
-                }
-                batch.put_item(Item=item)
-                added_txs.append(item)
         
-        genai.delete_file(gemini_file.name)
+        extracted_text = ""
+        
+        # 1. Read the PDF document deterministically
+        if filepath.lower().endswith('.pdf'):
+            with pdfplumber.open(filepath) as pdf:
+                for page in pdf.pages:
+                    extracted_text += page.extract_text() + "\n"
+        else:
+            # Fallback for CSV or TXT if you upload those
+            with open(filepath, 'r', encoding='utf-8') as f:
+                extracted_text = f.read()
+
+        # 2. Use Regex to find standard bank statement lines
+        # Matches formats like: 05-May-2026   Rent Payment   10000.00
+        transaction_pattern = re.compile(r"(\d{2}-[a-zA-Z]{3}-\d{4})\s+(.+?)\s+([\d,]+\.\d{2})")
+        
+        added_txs = []
+        
+        # 3. Parse matches and save directly to AWS DynamoDB
+        with transactions_table.batch_writer() as batch:
+            for line in extracted_text.split('\n'):
+                match = transaction_pattern.search(line)
+                if match:
+                    date_str, description, amount_str = match.groups()
+                    
+                    # Clean up the amount (remove commas)
+                    clean_amount = amount_str.replace(',', '')
+                    
+                    # Simple keyword-based auto-categorization
+                    desc_lower = description.lower()
+                    category = "Other"
+                    if "salary" in desc_lower: category = "Salary"
+                    elif "rent" in desc_lower or "housing" in desc_lower: category = "Housing"
+                    elif "grocery" in desc_lower or "coffee" in desc_lower: category = "Food"
+                    elif "atm" in desc_lower: category = "Cash"
+                    
+                    new_id = str(uuid.uuid4())
+                    item = {
+                        'id': new_id,
+                        'userId': user_id,
+                        'name': description.strip(),
+                        'amount': clean_amount,
+                        'category': category,
+                        'date': date_str.strip()
+                    }
+                    batch.put_item(Item=item)
+                    added_txs.append(item)
+        
         os.remove(filepath)
         
-        return jsonify({"message": "Successfully processed with AI", "count": len(added_txs)}), 200
+        return jsonify({"message": "Successfully processed using deterministic parser", "count": len(added_txs)}), 200
 
     except Exception as e:
-        print("AI Upload Error:", str(e))
+        print("Local Parsing Error:", str(e))
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
