@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
 import { Send, Mic, MicOff, Trash2, PlusCircle, MessageSquare, Pencil } from "lucide-react";
 
 const formatMessage = (text: string) => {
@@ -27,7 +26,8 @@ type Message = { role: string; content: string };
 type ChatSession = { id: string; title: string; messages: Message[]; updatedAt: number };
 
 export function AdvisorView() {
-  const { user, isLoaded } = useUser();
+  const MOCK_USER_ID = "hackathon_admin";
+
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>("");
   const [input, setInput] = useState("");
@@ -207,7 +207,7 @@ export function AdvisorView() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !activeChat || !isLoaded || !user?.id) return;
+    if (!input.trim() || !activeChat) return;
 
     if (isRecording) {
       recognitionRef.current?.stop();
@@ -234,7 +234,7 @@ export function AdvisorView() {
     setIsLoading(true);
 
     try {
-      const userId = user?.id; 
+      const userId = MOCK_USER_ID; 
       const userCurrencyKey = `auraVault_${userId}_currency`;
       const userCurrencyCode = localStorage.getItem(userCurrencyKey) || localStorage.getItem("auraVault_currency") || "usd";
 
@@ -373,7 +373,6 @@ export function AdvisorView() {
         <div className="p-4 border-t border-sidebar-border bg-sidebar">
           <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto relative flex items-center">
             
-            {/* 👇 Google Ripple UI applied here! */}
             <div className="absolute left-3 flex items-center justify-center z-10 w-9 h-9">
               {isRecording && (
                 <span className="absolute w-10 h-10 rounded-full bg-red-500/40 animate-ping"></span>
@@ -401,7 +400,7 @@ export function AdvisorView() {
             
             <button
               type="submit"
-              disabled={isLoading || !input.trim() || !isLoaded || !user?.id}
+              disabled={isLoading || !input.trim()}
               className="absolute right-2 p-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors z-10"
             >
               <Send className="w-5 h-5" />

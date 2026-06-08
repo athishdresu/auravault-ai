@@ -28,13 +28,13 @@ dynamodb = boto3.resource(
 transactions_table = dynamodb.Table('Transactions')
 users_table = dynamodb.Table('Users')
 
+MOCK_USER_ID = "hackathon_admin"
+
 @app.route('/api/transactions', methods=['GET', 'POST'])
 def handle_transactions():
     if request.method == 'GET':
-        user_id = request.args.get('userId')
-        if not user_id:
-            return jsonify([])
-
+        user_id = request.args.get('userId', MOCK_USER_ID)
+        
         try:
             response = transactions_table.scan(
                 FilterExpression=Attr('userId').eq(user_id)
@@ -52,7 +52,7 @@ def handle_transactions():
             new_id = str(uuid.uuid4()) 
             transaction_item = {
                 'id': new_id,
-                'userId': data.get('userId'),
+                'userId': MOCK_USER_ID,
                 'name': data.get('name', 'Manual Entry'),
                 'amount': str(data.get('amount', 0)), 
                 'category': data.get('category', 'Other'),
@@ -66,9 +66,7 @@ def handle_transactions():
         
 @app.route('/api/transactions/all', methods=['DELETE'])
 def delete_all_transactions():
-    user_id = request.args.get('userId')
-    if not user_id:
-        return jsonify({"error": "No user ID provided"}), 400
+    user_id = request.args.get('userId', MOCK_USER_ID)
         
     try:
         response = transactions_table.scan(FilterExpression=Attr('userId').eq(user_id))
@@ -91,9 +89,7 @@ def delete_transaction(transaction_id):
 @app.route('/api/settings', methods=['GET', 'POST'])
 def handle_settings():
     if request.method == 'GET':
-        user_id = request.args.get('userId')
-        if not user_id:
-            return jsonify({"error": "No user ID provided"}), 400
+        user_id = request.args.get('userId', MOCK_USER_ID)
         try:
             response = users_table.get_item(Key={'userId': user_id})
             return jsonify(response.get('Item', {}))
@@ -104,7 +100,7 @@ def handle_settings():
         data = request.json
         try:
             item = {
-                'userId': data.get('userId'),
+                'userId': MOCK_USER_ID,
                 'currency': data.get('currency', 'INR'),
                 'monthlyBudget': str(data.get('monthlyBudget', 0)),
                 'theme': data.get('theme', 'dark'),
@@ -121,14 +117,12 @@ def chat():
     data = request.json
     try:
         user_message = data.get("message", "")
-        user_id = data.get("userId")
+        user_id = data.get("userId", MOCK_USER_ID)
         history = data.get("history", []) 
 
-        if user_id:
-            response = transactions_table.scan(FilterExpression=Attr('userId').eq(user_id))
-            transactions = response.get('Items', [])
-        else:
-            transactions = []
+        response = transactions_table.scan(FilterExpression=Attr('userId').eq(user_id))
+        transactions = response.get('Items', [])
+        
         raw_currency = str(data.get('currency_code', data.get('currency', 'inr'))).lower()
         
         symbol_map = {
@@ -202,16 +196,17 @@ def chat():
         
     except Exception as e:
         return jsonify({"reply": f"API Error: {str(e)}"}), 500
+
 @app.route('/api/upload', methods=['POST'])
 def upload_statement():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
         
     file = request.files['file']
-    user_id = request.form.get('userId')
+    user_id = request.form.get('userId', MOCK_USER_ID)
     
-    if not user_id or file.filename == '':
-        return jsonify({"error": "Missing user ID or file"}), 400
+    if file.filename == '':
+        return jsonify({"error": "Missing file"}), 400
 
     try:
         temp_dir = tempfile.gettempdir()
@@ -247,7 +242,6 @@ def upload_statement():
                 batch.put_item(Item=item)
                 added_txs.append(item)
         
-        # 6. Clean up: Delete file from Gemini servers and your local temp folder
         genai.delete_file(gemini_file.name)
         os.remove(filepath)
         
@@ -256,5 +250,6 @@ def upload_statement():
     except Exception as e:
         print("AI Upload Error:", str(e))
         return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

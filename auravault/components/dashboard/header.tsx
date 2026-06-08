@@ -1,8 +1,6 @@
 "use client";
-
 import { useState, useRef, useEffect } from "react";
-import { UserButton, useUser } from "@clerk/nextjs";
-import { Bell, Search, AlertCircle, TrendingDown } from "lucide-react";
+import { Bell, Search, AlertCircle, TrendingDown, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -10,8 +8,7 @@ import { cn } from "@/lib/utils";
 export function Header({ currentTab = "Dashboard" }: { currentTab?: string }) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
-  const { user } = useUser();
-  
+  const MOCK_USER_ID = "hackathon_admin";
   const [activeNotifications, setActiveNotifications] = useState<any[]>([]);
   const [hasUnseen, setHasUnseen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -20,10 +17,9 @@ export function Header({ currentTab = "Dashboard" }: { currentTab?: string }) {
   const searchRef = useRef<HTMLDivElement>(null);
 
   const checkRealEvents = async () => {
-    if (!user?.id) return; 
-
     try {
-      const res = await fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${user.id}`);
+      // BYPASS CLERK: Using our mock ID
+      const res = await fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${MOCK_USER_ID}`);
       const txData = await res.json();
 
       setAllTransactions(txData);
@@ -119,14 +115,12 @@ export function Header({ currentTab = "Dashboard" }: { currentTab?: string }) {
   };
 
   useEffect(() => {
-    if (user?.id) {
-      checkRealEvents();
-    }
+    checkRealEvents();
     window.addEventListener("notificationsUpdated", checkRealEvents);
     return () => {
       window.removeEventListener("notificationsUpdated", checkRealEvents);
     };
-  }, [user?.id]); 
+  }, []); 
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -256,14 +250,15 @@ export function Header({ currentTab = "Dashboard" }: { currentTab?: string }) {
             </div>
           )}
         </div>
-
         <div className="flex items-center gap-3 pl-4 border-l border-border">
           <div className="hidden md:block text-right">
             <p className="text-sm font-medium text-foreground">
-              {user?.fullName || "AuraVault Member"}
+              Athish M
             </p>
           </div>
-          <UserButton afterSignOutUrl="/" />
+          <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold">
+            <User className="w-5 h-5" />
+          </div>
         </div>
         
       </div>

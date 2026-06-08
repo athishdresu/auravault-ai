@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ExpensesChart } from "@/components/dashboard/expenses-chart";
 import { TransactionsList } from "@/components/dashboard/transactions-list";
@@ -10,7 +9,9 @@ import { ChatWidget } from "@/components/dashboard/chat-widget";
 import { Plus, Loader2 } from "lucide-react";
 
 export function DashboardView() {
-  const { user, isLoaded } = useUser(); 
+  // BYPASS CLERK: Hardcoded ID to match our Python backend
+  const MOCK_USER_ID = "hackathon_admin";
+
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [baseCreditLimit, setBaseCreditLimit] = useState(50000);
@@ -23,9 +24,8 @@ export function DashboardView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchData = () => {
-    if (!user?.id) return; 
-
-    fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${user.id}`)
+    // BYPASS CLERK: Use MOCK_USER_ID
+    fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${MOCK_USER_ID}`)
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data)) {
@@ -48,21 +48,22 @@ export function DashboardView() {
   };
 
   useEffect(() => {
-    if (isLoaded && user) {
-      const savedLimit = localStorage.getItem(`auraVault_${user.id}_creditLimit`);
-      if (savedLimit) setBaseCreditLimit(parseFloat(savedLimit));
-      const savedCurrency = (localStorage.getItem(`auraVault_${user.id}_currency`) || "inr").toLowerCase();
-      if (savedCurrency === "usd") {
-        setCurrency({ symbol: "$", locale: "en-US" });
-      } else if (savedCurrency === "eur") {
-        setCurrency({ symbol: "€", locale: "en-IE" });
-      } else if (savedCurrency === "gbp") {
-        setCurrency({ symbol: "£", locale: "en-GB" });
-      } else {
-        setCurrency({ symbol: "₹", locale: "en-IN" });
-      }
-      fetchData();
+    // BYPASS CLERK: Removed the isLoaded check so it fetches immediately
+    const savedLimit = localStorage.getItem(`auraVault_${MOCK_USER_ID}_creditLimit`);
+    if (savedLimit) setBaseCreditLimit(parseFloat(savedLimit));
+    
+    const savedCurrency = (localStorage.getItem(`auraVault_${MOCK_USER_ID}_currency`) || "inr").toLowerCase();
+    if (savedCurrency === "usd") {
+      setCurrency({ symbol: "$", locale: "en-US" });
+    } else if (savedCurrency === "eur") {
+      setCurrency({ symbol: "€", locale: "en-IE" });
+    } else if (savedCurrency === "gbp") {
+      setCurrency({ symbol: "£", locale: "en-GB" });
+    } else {
+      setCurrency({ symbol: "₹", locale: "en-IN" });
     }
+    
+    fetchData();
 
     const handleSearchEvent = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -70,11 +71,11 @@ export function DashboardView() {
     };
     window.addEventListener("searchTransactions", handleSearchEvent);
     return () => window.removeEventListener("searchTransactions", handleSearchEvent);
-  }, [isLoaded, user]);
+  }, []);
 
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newAmount || !user?.id) return;
+    if (!newName || !newAmount) return;
     
     setIsSubmitting(true);
     try {
@@ -87,7 +88,7 @@ export function DashboardView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id, 
+          userId: MOCK_USER_ID, // BYPASS CLERK: Use Mock ID
           name: newName,
           amount: newAmount,
           category: finalCategory
@@ -136,10 +137,10 @@ export function DashboardView() {
     (tx.category || "").toLowerCase().includes(safeSearchQuery)
   );
 
-  if (loading || !isLoaded) {
+  if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground animate-pulse mt-20">
-        Authenticating Secure Vault...
+        Syncing Secure Vault...
       </div>
     );
   }
@@ -148,7 +149,8 @@ export function DashboardView() {
     <>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground">
-          Welcome back, {user?.firstName}
+          {/* BYPASS CLERK: Hardcoded your name for the hackathon */}
+          Welcome back, Athish
         </h1>
         <p className="text-muted-foreground mt-1">
           Here's your financial overview.

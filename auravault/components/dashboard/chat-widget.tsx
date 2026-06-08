@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send, Mic, MicOff, Loader2, Trash2 } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
 
 type Message = { role: string; content: string };
 
@@ -20,8 +19,10 @@ const formatMessage = (text: string) => {
     return part;
   });
 };
+
 export function ChatWidget() {
-  const { user } = useUser();
+  const MOCK_USER_ID = "hackathon_admin";
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([DEFAULT_MESSAGE]);
   const [input, setInput] = useState("");
@@ -148,7 +149,7 @@ export function ChatWidget() {
 
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || !user?.id) return;
+    if (!input.trim()) return;
 
     if (isRecording) {
       recognitionRef.current?.stop();
@@ -164,17 +165,18 @@ export function ChatWidget() {
     setIsLoading(true);
 
     try {
-      const userId = user?.id; 
+      const userId = MOCK_USER_ID; 
       const userCurrencyKey = `auraVault_${userId}_currency`;
       const userCurrencyCode = localStorage.getItem(userCurrencyKey) || localStorage.getItem("auraVault_currency") || "usd";
+      
       const response = await fetch("https://auravault-ai.onrender.com/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userText,
           userId: userId,
-          currency_code: userCurrencyCode, // 👈 INJECTED THE RAW CODE
-          history: messages.length > 1 ? messages.slice(1) : [] // 👈 Using the widget's correct 'messages' array!
+          currency_code: userCurrencyCode, 
+          history: messages.length > 1 ? messages.slice(1) : [] 
         }),
       });
 
@@ -191,6 +193,7 @@ export function ChatWidget() {
       setIsLoading(false);
     }
    };
+
   return (
     <>
       <div className={`fixed bottom-6 right-6 z-40 ${isOpen ? "hidden" : "flex"} items-center justify-center w-14 h-14`}>

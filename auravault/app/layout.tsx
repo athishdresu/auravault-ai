@@ -37,7 +37,6 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <body className="font-sans antialiased bg-background">
           <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
@@ -46,6 +45,5 @@ export default function RootLayout({
           </ThemeProvider>
         </body>
       </html>
-    </ClerkProvider>
   )
 }

@@ -1,21 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useUser } from "@clerk/nextjs"; 
 import { Upload, Loader2, Trash2 } from "lucide-react";
 
 export function TransactionsView() {
-  const { user, isLoaded } = useUser(); 
+  const MOCK_USER_ID = "hackathon_admin";
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTransactions = () => {
-    if (!isLoaded || !user?.id) return;
-
-    fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${user.id}`)
+    fetch(`https://auravault-ai.onrender.com/api/transactions?userId=${MOCK_USER_ID}`)
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data)) {
@@ -39,16 +35,17 @@ export function TransactionsView() {
 
   useEffect(() => {
     fetchTransactions();
-  }, [isLoaded, user?.id]);
+  }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !user?.id) return;
+    if (!file) return;
 
     setIsUploading(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("userId", user.id);
+    formData.append("userId", MOCK_USER_ID);
+    
     try {
       const response = await fetch("https://auravault-ai.onrender.com/api/upload", {
         method: "POST",
@@ -74,21 +71,32 @@ export function TransactionsView() {
   };
 
   const handleDeleteAll = async () => {
-    if (!user?.id) return;
-    
     if (!confirm("WARNING: Are you sure you want to permanently delete ALL transactions? This cannot be undone!")) return;
 
     try {
-      await fetch(`https://auravault-ai.onrender.com/api/transactions/all?userId=${user.id}`, {
+      await fetch(`https://auravault-ai.onrender.com/api/transactions/all?userId=${MOCK_USER_ID}`, {
         method: "DELETE",
       });
       
-      setTransactions([]); // Clear the UI
+      setTransactions([]);
       
       window.dispatchEvent(new Event("searchTransactions"));
       window.dispatchEvent(new Event("notificationsUpdated"));
     } catch (error) {
       console.error("Failed to clear vault:", error);
+    }
+  };
+  
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`https://auravault-ai.onrender.com/api/transactions/${id}`, {
+        method: "DELETE",
+      });
+      fetchTransactions();
+      window.dispatchEvent(new Event("searchTransactions"));
+      window.dispatchEvent(new Event("notificationsUpdated"));
+    } catch (error) {
+      console.error("Failed to delete transaction", error);
     }
   };
 
