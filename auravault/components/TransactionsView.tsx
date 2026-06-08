@@ -133,7 +133,7 @@ export function TransactionsView() {
             ) : (
               <Upload className="w-4 h-4" />
             )}
-            <span>{isUploading ? "AI Processing..." : "Upload Statement"}</span>
+            <span>{isUploading ? "Uploading..." : "Upload Statement"}</span>
           </button>
         </div>
       </div>
