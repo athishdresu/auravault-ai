@@ -17,7 +17,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("API_KEY"))
 
 dynamodb = boto3.resource(
     'dynamodb',
